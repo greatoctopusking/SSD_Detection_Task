@@ -43,8 +43,8 @@ loss:
 train:
   batch_size: 4                # TODO: benchmark_cpu.py 实测后调整
   epochs: 5                    # TODO: 原手册 60；CPU 先小规模跑通
-  train_subset_size: 500       # TODO: 从 5000 张抽出的训练张数（make_subset）
-  val_subset_size: 500         # TODO: 验证张数
+  train_subset_size: 500       # 与 scripts/make_subset.py 默认一致（切分时生成）
+  val_subset_size: 300         # 同上
   lr_init: 0.001
   lr_max: 0.05
   lr_end_ratio: 0.05           # lr_end = lr_init * lr_end_ratio（手册语义）

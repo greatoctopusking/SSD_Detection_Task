@@ -69,12 +69,13 @@ SSD_Detection_Task/
 │   │   ├── coco.py            # COCO Dataset（读 json 标注 → img/box/label）
 │   │   ├── transforms.py      # 随机裁剪采样/翻转/颜色抖动（手册代码迁移）
 │   │   └── encode.py          # gt→anchor 匹配编码 8732×4（手册 ssd_bboxes_encode）
-│   ├── losses.py              # SmoothL1 定位 + focal 置信度 + hard negative mining
+│   ├── losses.py              # SSDLoss：SmoothL1 定位 + focal 置信度 + 归一化
 │   └── utils/
 │       ├── lr_schedule.py     # warmup + cosine 学习率
 │       ├── nms.py             # 推理 NMS（手册 apply_nms）
+│       ├── postprocess.py     # 解码预测框 + 逐类阈值/NMS 过滤（手册 SsdInferWithDecoder）
 │       ├── coco_eval.py       # pycocotools 计算 mAP（手册 COCOMetrics）
-│       └── viz.py             # 检测结果画框
+│       └── viz.py             # GT 抽查 / 检测结果画框
 ├── scripts/
 │   ├── download_data.py       # 下载 COCO 数据 → data/
 │   ├── make_subset.py         # CPU 适配：从全量标注切出小训练/验证子集
@@ -88,8 +89,9 @@ SSD_Detection_Task/
 └── outputs/                   # 评估 json / 可视化图片
 ```
 
-> 注：目录骨架已建立：`requirements.txt`、`.gitignore`、`configs/ssd300_coco.yaml` 就绪；
-> `ssd/**`、`scripts/*`、`train.py / eval.py / infer.py` 目前为**占位文件**（docstring 注明对应手册章节与待实现步骤，入口脚本会提示 NotImplementedError），功能代码将在后续步骤中填充。
+> 注：`ssd/model/`（anchor/backbone/ssd）为**待与用户一起实现的占位**（docstring 已写明接口契约）；
+> 其余代码（config/data/losses/utils、train/eval/infer、make_subset/benchmark）已全部实现并通过数据层验证；
+> `train.py / eval.py / infer.py / benchmark_cpu.py` 需在第 04 步模型实现后方可运行。
 
 ---
 
@@ -104,7 +106,8 @@ SSD_Detection_Task/
 
 - [x] `val2017` 图片已下载并解压到 `data/images/`（5000 张，约 777 MB，纯 .jpg）
 - [x] 官方标注已就位：`data/annotations/instances_val2017.json`（5000 图 / 36781 标注 / 80 类，类 id 1~90 非连续）
-- [ ] `make_subset.py` 切分：从 5000 张中划出独立训练/验证子集（数量可配置，CPU 友好默认值待基准测试后确定）
+- [x] 子集已切分：`data/subsets/train_ids.json`（500 张，覆盖全部 80 类）+ `val_ids.json`（300 张，78 类），train/val 互不重叠
+- [x] GT 抽查图已生成：`outputs/data_check/gt_*.jpg`（6 张，含 2~17 个真实框），数据通路（读图→增强→编码→tensor）单测通过
 
 ---
 
@@ -155,10 +158,11 @@ python infer.py --config configs/ssd300_coco.yaml --ckpt checkpoints/ssd-*.pth -
 - [x] 02b 目录骨架：全部目录 + 占位文件 + `configs/ssd300_coco.yaml` 模板（compileall 通过）
 - [x] 03a 数据：`val2017` 图片已下载并解压（5000 张，777 MB）
 - [x] 03b-1 数据：官方标注已就位（`instances_val2017.json`）
-- [ ] 03b-2 数据：`make_subset.py` 切分训练/验证子集 + 可视化抽查
-- [ ] 04 模型实现（anchor / backbone / ssd）+ forward 形状单测（8732）
-- [ ] 05 数据通路 + 损失函数（跑通 1 个训练 step）
-- [ ] 06 CPU 小规模训练（观察 loss 下降）
+- [x] 03b-2 数据：`make_subset.py` 切分 train500/val300 + GT 抽查图 + 数据通路单测（encode 冒烟、val Dataset 形状）
+- [x] 03c 代码：除 `model/` 外的全部模块已实现（config/data/encode/transforms/losses/lr_schedule/nms/postprocess/coco_eval/viz + train/eval/infer + scripts），compileall 通过
+- [ ] 04 模型实现（anchor / backbone / ssd）+ forward 形状单测（8732）★ 下一步与你逐行完成
+- [ ] 05 跑通 1 个训练 step（loss 为有限值）
+- [ ] 06 CPU 小规模训练（观察 loss 下降）+ benchmark_cpu 定规模
 - [ ] 07 mAP 评估（pycocotools）
 - [ ] 08 推理画框 + README 使用说明收尾
 
