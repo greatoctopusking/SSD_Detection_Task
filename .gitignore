@@ -1,0 +1,25 @@
+# ---- 数据与运行产物（体积大 / 可再生，不入库） ----
+data/
+checkpoints/
+runs/
+outputs/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# ---- 压缩包 / 下载残留 ----
+*.zip
+*.part
+*.ckpt
+
+# ---- IDE / OS ----
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+*.docx

@@ -1,0 +1,68 @@
+# ============================================================
+# SSD300 + VGG16 (COCO) 配置文件模板 —— 骨架阶段
+# 说明：标注 "TODO/待定" 的数值将在 benchmark_cpu / make_subset
+#       完成后按本机 CPU 实测更新；由 ssd/config.py 读取。
+# ============================================================
+
+# ---------- 数据 ----------
+data:
+  root: ./data
+  # 当前布局：val2017 的 5000 张图直接位于 images/ 下
+  image_dir: ./data/images
+  # 官方 val2017 标注（80 类；COCO 类 id 1~90 非连续）
+  anno_json: ./data/annotations/instances_val2017.json
+  # 子集 id 清单（scripts/make_subset.py 生成）
+  subset:
+    train_ids_json: ./data/subsets/train_ids.json   # TODO: make_subset.py 生成
+    val_ids_json:   ./data/subsets/val_ids.json     # TODO: make_subset.py 生成
+  num_workers: 0        # Windows CPU 建议 0
+  image_ext: .jpg
+
+# ---------- 模型（手册结构参数） ----------
+model:
+  num_classes: 81              # COCO 80 类 + background
+  input_size: [300, 300]
+  num_ssd_boxes: 8732          # 全部 6 层锚点总数
+  feature_map_sizes: [38, 19, 10, 5, 3, 1]   # block4/7/8/9/10/11 输出尺寸
+  boxes_per_point: [4, 6, 6, 6, 4, 4]
+  scales_min: 0.1              # 最低层 scale
+  scales_max: 0.95             # 最高层 scale
+  fk_divisors: [8, 16, 32, 64, 100, 300]     # 300/该值 = 特征图步长
+  prior_scaling_xy: 0.1        # 编码/解码方差（与手册一致）
+  prior_scaling_wh: 0.2
+  pretrained_backbone: true    # 加载 ImageNet 预训练 VGG16 权重
+
+# ---------- 匹配 / 损失（手册参数） ----------
+loss:
+  jaccard_threshold: 0.5       # 先验框匹配 IoU 阈值
+  hard_negative_ratio: 3       # 负:正 ≈ 3:1
+  focal_alpha: 0.75
+  focal_gamma: 2.0
+
+# ---------- 训练（CPU 小规模，数值待 benchmark 后定） ----------
+train:
+  batch_size: 4                # TODO: benchmark_cpu.py 实测后调整
+  epochs: 5                    # TODO: 原手册 60；CPU 先小规模跑通
+  train_subset_size: 500       # TODO: 从 5000 张抽出的训练张数（make_subset）
+  val_subset_size: 500         # TODO: 验证张数
+  lr_init: 0.001
+  lr_max: 0.05
+  lr_end_ratio: 0.05           # lr_end = lr_init * lr_end_ratio（手册语义）
+  warmup_epochs: 1
+  momentum: 0.9
+  weight_decay: 0.00015
+  save_ckpt_epochs: 1          # 每 N 个 epoch 保存一次
+
+# ---------- 评估 / 推理 ----------
+eval:
+  batch_size: 1
+  nms_threshold: 0.6
+  min_score: 0.1
+  max_boxes: 100
+  ckpt_path: ./checkpoints/ssd-last.pth
+
+# ---------- 输出路径 ----------
+paths:
+  ckpt_dir: ./checkpoints
+  log_dir: ./runs
+  output_dir: ./outputs

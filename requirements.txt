@@ -1,0 +1,18 @@
+# SSD 项目依赖清单 —— 对应 conda 环境 ssd (Python 3.12)
+# 本机已全部安装，此文件仅供重建环境复现使用。
+#
+# 重建顺序：
+#   1) conda create -n ssd python=3.12 -y
+#   2) pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#      （torch/torchvision 的 +cpu 版只存在于 PyTorch CPU 源，不能走默认 PyPI）
+#   3) pip install -r requirements.txt
+
+torch==2.14.0+cpu
+torchvision==0.29.0+cpu
+opencv-python==5.0.0.93
+numpy==2.5.2
+pycocotools==2.0.11
+PyYAML==6.0.3
+matplotlib==3.11.1
+tqdm==4.70.0
+pillow==12.3.0
