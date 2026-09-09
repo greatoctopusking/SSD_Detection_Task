@@ -160,7 +160,9 @@ python infer.py --config configs/ssd300_coco.yaml --ckpt checkpoints/ssd-*.pth -
 - [x] 03b-1 数据：官方标注已就位（`instances_val2017.json`）
 - [x] 03b-2 数据：`make_subset.py` 切分 train500/val300 + GT 抽查图 + 数据通路单测（encode 冒烟、val Dataset 形状）
 - [x] 03c 代码：除 `model/` 外的全部模块已实现（config/data/encode/transforms/losses/lr_schedule/nms/postprocess/coco_eval/viz + train/eval/infer + scripts），compileall 通过
-- [ ] 04 模型实现（anchor / backbone / ssd）+ forward 形状单测（8732）★ 下一步与你逐行完成
+- [x] 04a 模型：`model/anchor.py` 已完成（8732 锚点，验收断言 + 数据通路联调全通过）
+- [ ] 04b 模型：`model/backbone.py`（VGG16 + fc6/fc7 卷积化 + 预训练权重迁移）
+- [ ] 04c 模型：`model/ssd.py`（Extra + MultiBox + SSD300）+ forward 形状单测（8732）
 - [ ] 05 跑通 1 个训练 step（loss 为有限值）
 - [ ] 06 CPU 小规模训练（观察 loss 下降）+ benchmark_cpu 定规模
 - [ ] 07 mAP 评估（pycocotools）
