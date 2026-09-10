@@ -23,3 +23,5 @@ venv/
 Thumbs.db
 
 *.docx
+
+!/ssd/data/
