@@ -17,8 +17,8 @@ import torch
 from ssd.config import load_config, resolve_config_paths, resolve_path
 from ssd.data import transforms as T
 from ssd.data.coco import load_coco_meta
-from ssd.model.anchor import generate_default_boxes      # 第 04 步实现
-from ssd.model.ssd import SSD300                          # 第 04 步实现
+from ssd.model.anchor import generate_default_boxes
+from ssd.model.SSD300 import SSD300
 from ssd.utils.postprocess import decode_boxes, filter_predictions
 from ssd.utils.viz import draw_boxes
 

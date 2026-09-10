@@ -1,9 +1,9 @@
 """CPU 测速：量测 1 个真实训练 step（forward+loss+backward+optimizer）的耗时，
-据此反推合理的子集大小 × epoch 数，避免盲跑几小时才发现太慢。
+据此反推合理的子集大小 x epoch 数，避免盲跑几小时才发现太慢。
 
-用法（需在第 04 步模型实现之后）：
+用法（模型已实现，可直接运行）：
     python scripts/benchmark_cpu.py --batch 4 --steps 3
-输出：平均 s/step、s/图像，以及 train=500/1000/2000 张 × 3/5/10 epoch 的预估墙钟时间。
+输出：平均 s/step、s/图像，以及 train=500/1000/2000 张 x 3/5/10 epoch 的预估墙钟时间。
 """
 from __future__ import annotations
 
@@ -18,8 +18,8 @@ import torch  # noqa: E402
 
 from ssd.config import load_config, resolve_config_paths  # noqa: E402
 from ssd.losses import SSDLoss  # noqa: E402
-from ssd.model.anchor import generate_default_boxes  # noqa: E402  (第 04 步实现)
-from ssd.model.ssd import SSD300  # noqa: E402           (第 04 步实现)
+from ssd.model.anchor import generate_default_boxes  # noqa: E402
+from ssd.model.SSD300 import SSD300  # noqa: E402
 
 
 def parse_args():

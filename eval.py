@@ -16,8 +16,8 @@ import torch
 
 from ssd.config import load_config, resolve_config_paths, resolve_path
 from ssd.data.coco import build_dataloader
-from ssd.model.anchor import generate_default_boxes      # 第 04 步实现
-from ssd.model.ssd import SSD300                          # 第 04 步实现
+from ssd.model.anchor import generate_default_boxes
+from ssd.model.SSD300 import SSD300
 from ssd.utils.coco_eval import COCOMetrics
 from ssd.utils.postprocess import decode_boxes
 
@@ -50,7 +50,7 @@ def main():
     net.eval()
     print(f"[eval] 已加载 {ckpt_path}")
 
-    default_boxes, default_boxes_tlbr = generate_default_boxes(
+    default_boxes, _ = generate_default_boxes(
         feature_map_sizes=m["feature_map_sizes"],
         boxes_per_point=m["boxes_per_point"],
         fk_divisors=m["fk_divisors"],

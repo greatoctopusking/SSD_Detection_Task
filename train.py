@@ -8,7 +8,7 @@
 流程：读配置 → 生成 8732 锚点 → 构建 train DataLoader → SSD300(+预训练骨干)
      → SSDLoss(focal+BCE) → warmup+cosine 学习率 + Momentum → 训练并记录/保存 ckpt。
 
-依赖：第 04 步实现 ssd/model/{anchor,backbone,ssd}.py 后即可运行。
+依赖：ssd/model/{anchor,backbone,SSD300}.py（均已实现），可运行。
 """
 from __future__ import annotations
 
@@ -23,8 +23,8 @@ import torch
 from ssd.config import ensure_dirs, load_config, resolve_config_paths, resolve_path
 from ssd.data.coco import build_dataloader
 from ssd.losses import SSDLoss
-from ssd.model.anchor import generate_default_boxes      # 第 04 步实现
-from ssd.model.ssd import SSD300                          # 第 04 步实现
+from ssd.model.anchor import generate_default_boxes
+from ssd.model.SSD300 import SSD300
 from ssd.utils.lr_schedule import build_lr_schedule
 
 
@@ -86,7 +86,7 @@ def main():
         lr_end_ratio=t["lr_end_ratio"],
     )
     opt = torch.optim.SGD(
-        [p for p in net.parameters() if p.requires_grad],
+        [p_ for p_ in net.parameters() if p_.requires_grad],
         lr=float(lr_arr[0]), momentum=t["momentum"], weight_decay=t["weight_decay"],
     )
 

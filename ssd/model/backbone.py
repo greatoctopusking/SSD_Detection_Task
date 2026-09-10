@@ -111,6 +111,3 @@ def build_backbone(pretrained=True) -> nn.Module:
     if(pretrained):
         load_pretrained_weights(net)
     return net
-
-if __name__ == "__main__":
-    model = build_backbone()
