@@ -4,8 +4,14 @@
 """
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import cv2
+
+# DataLoader 多进程时，每个 worker 内部再开多线程会互相抢核；默认限制为 1 线程/进程
+# （如需在单进程下加速，可设环境变量 CV2_NUM_THREADS）
+cv2.setNumThreads(int(os.environ.get("CV2_NUM_THREADS", "1")))
 
 # ImageNet 均值/方差（0~255 尺度，RGB 通道序）—— 与手册 Normalize(mean=[0.485*255,...]) 一致
 MEAN = np.array([123.675, 116.28, 103.53], dtype=np.float32)

@@ -1,68 +1,86 @@
 # ============================================================
-# SSD300 + VGG16 (COCO) 配置文件模板 —— 骨架阶段
-# 说明：标注 "TODO/待定" 的数值将在 benchmark_cpu / make_subset
-#       完成后按本机 CPU 实测更新；由 ssd/config.py 读取。
+# SSD300 + VGG16 (COCO2017) 训练配置 —— CUDA / CPU 通用
+#   设备：device: auto（有 CUDA 用 GPU，否则 CPU）
+#   每个路径都可以写相对项目根（./data/...）或绝对路径
 # ============================================================
+
+# ---------- 设备 ----------
+device: auto                 # auto | cuda | cpu
 
 # ---------- 数据 ----------
 data:
   root: ./data
-  # 当前布局：val2017 的 5000 张图直接位于 images/ 下
-  image_dir: ./data/images
-  # 官方 val2017 标注（80 类；COCO 类 id 1~90 非连续）
-  anno_json: ./data/annotations/instances_val2017.json
-  # 子集 id 清单（scripts/make_subset.py 生成）
-  subset:
-    train_ids_json: ./data/subsets/train_ids.json   # TODO: make_subset.py 生成
-    val_ids_json:   ./data/subsets/val_ids.json     # TODO: make_subset.py 生成
-  num_workers: 0        # Windows CPU 建议 0
-  image_ext: .jpg
+  # 训练集：全量 COCO2017 train2017（118k 张，18GB）
+  train:
+    image_dir: ./data/train2017
+    anno_json: ./data/annotations/instances_train2017.json
+    ids_json: ./data/subsets/train_ids.json    # null = 用 json 中全部（有标注的）图片
+  # 验证集：全量 COCO2017 val2017（5000 张）
+  val:
+    image_dir: ./data/val2017
+    anno_json: ./data/annotations/instances_val2017.json
+    ids_json: ./data/subsets/val_ids.json      # null = 用 json 中全部图片
+  num_workers: 8             # CUDA 建议 8；Windows/CPU 调试建议 0
+  pin_memory: true           # CUDA 下自动生效（加速 Host→Device）
+  prefetch_factor: 4
+  color_jitter: true         # 训练时的随机颜色抖动
+
+# ---- 小数据冒烟（无全量数据时，把上面 train/val 两块临时换成下面两行）----
+#   train: {image_dir: ./data/images, anno_json: ./data/annotations/instances_val2017.json, ids_json: ./data/subsets/train_ids.json}
+#   val:   {image_dir: ./data/images, anno_json: ./data/annotations/instances_val2017.json, ids_json: ./data/subsets/val_ids.json}
 
 # ---------- 模型（手册结构参数） ----------
 model:
   num_classes: 81              # COCO 80 类 + background
   input_size: [300, 300]
-  num_ssd_boxes: 8732          # 全部 6 层锚点总数
-  feature_map_sizes: [38, 19, 10, 5, 3, 1]   # block4/7/8/9/10/11 输出尺寸
+  num_ssd_boxes: 8732          # 6 层锚点总数
+  feature_map_sizes: [38, 19, 10, 5, 3, 1]
   boxes_per_point: [4, 6, 6, 6, 4, 4]
-  scales_min: 0.1              # 最低层 scale
-  scales_max: 0.95             # 最高层 scale
-  fk_divisors: [8, 16, 32, 64, 100, 300]     # 300/该值 = 特征图步长
-  prior_scaling_xy: 0.1        # 编码/解码方差（与手册一致）
+  scales_min: 0.1
+  scales_max: 0.95
+  fk_divisors: [8, 16, 32, 64, 100, 300]     # 300/该值 = 归一化分母
+  prior_scaling_xy: 0.1
   prior_scaling_wh: 0.2
-  pretrained_backbone: true    # 加载 ImageNet 预训练 VGG16 权重
+  pretrained_backbone: true    # 加载 ImageNet 预训练 VGG16（含 fc6/fc7 → conv6/conv7 迁移）
 
-# ---------- 匹配 / 损失（手册参数） ----------
+# ---------- 损失 ----------
 loss:
-  jaccard_threshold: 0.5       # 先验框匹配 IoU 阈值
-  hard_negative_ratio: 3       # 负:正 ≈ 3:1
-  focal_alpha: 0.75
-  focal_gamma: 2.0
+  type: multibox               # multibox(论文原版: softmax + hard negative mining) | focal(手册版)
+  neg_pos_ratio: 3             # HNM 负:正 比例
+  alpha: 1.0                   # 定位损失权重
+  focal_alpha: 0.75            # 仅 loss.type=focal 时生效
+  focal_gamma: 2.0             # 同上
 
-# ---------- 训练（CPU 小规模，数值待 benchmark 后定） ----------
+# ---------- 训练 ----------
 train:
-  batch_size: 4                # TODO: benchmark_cpu.py 实测后调整
-  epochs: 6                    # TODO: 原手册 60；CPU 先小规模跑通
-  train_subset_size: 500       # 与 scripts/make_subset.py 默认一致（切分时生成）
-  val_subset_size: 300         # 同上
-  lr_init: 0.0005
-  lr_max: 0.01
-  lr_end_ratio: 0.05           # lr_end = lr_init * lr_end_ratio（手册语义）
-  warmup_epochs: 1
+  seed: 1
+  batch_size: 16               # 显存 8G 可从 16 起；12G+ 可 32（lr 相应线性放大）
+  epochs: 60                   # 对齐手册（GPU 上 COCO 全量单轮约数分钟）
+  lr_init: 0.001
+  lr_max: 0.04                 # batch16 对应 lr；batch32 → 0.08
+  lr_end_ratio: 0.05           # lr_end = lr_init * 该比例
+  warmup_epochs: 2
   momentum: 0.9
-  weight_decay: 0.00015
-  save_ckpt_epochs: 1          # 每 N 个 epoch 保存一次
+  weight_decay: 0.0005
+  grad_clip: 10.0              # 梯度裁剪（保险丝）
+  amp: true                    # CUDA 下启用混合精度（提速/省显存）
+  deterministic: false         # true 可复现但更慢
+  log_every_n_steps: 20
+  save_every_n_epochs: 1       # current_checkpoint 保存频率
+  eval_every_n_epochs: 5       # 训练中途验证 mAP 的频率（0 = 不评估）
+  best_metric: map             # map（需 eval_every>0 且评估过）| loss
 
 # ---------- 评估 / 推理 ----------
 eval:
-  batch_size: 1
+  batch_size: 8
+  min_score: 0.1               # softmax 概率阈值（focal 训练可调 0.2~0.45）
   nms_threshold: 0.6
-  min_score: 0.55
   max_boxes: 100
-  ckpt_path: ./checkpoints/ssd-last.pth
+  ckpt_path: ./checkpoints/current_checkpoint.pth   # 也可写 checkpoints/<时间戳>/best_checkpoint.pth
 
 # ---------- 输出路径 ----------
 paths:
-  ckpt_dir: ./checkpoints
-  log_dir: ./runs
-  output_dir: ./outputs
+  ckpt_root: ./checkpoints     # 每次训练在下面新建 <日期>_<时间>/ 子目录
+  output_dir: ./outputs        # 评估 json / 可视化图片
+  plot: true                   # 每 epoch 绘制 curves.png
+  log_name: train_log.txt

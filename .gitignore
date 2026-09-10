@@ -22,6 +22,9 @@ venv/
 .DS_Store
 Thumbs.db
 
+# ---- matplotlib 字体缓存（运行时生成，可删） ----
+.mplconfig/
+
 *.docx
 
 !/ssd/data/

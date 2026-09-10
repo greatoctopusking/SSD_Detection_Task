@@ -1,12 +1,13 @@
-"""SSD300 组装 —— Extra 层 + MultiBox 检测头（手册 block8~11 / MultiBox / SSD300Vgg16）。★ 待与用户一起实现 ★
+"""SSD300 组装 —— Extra 层 + MultiBox 检测头（手册 block8~11 / MultiBox / SSD300Vgg16）。
 
-【接口契约 —— train.py / eval.py / benchmark_cpu.py 依赖它，请严格实现】：
+【接口契约 —— train.py / eval.py / infer.py / scripts/benchmark.py 依赖它】：
     class SSD300(nn.Module):
         def __init__(self, num_classes: int = 81, pretrained_backbone: bool = True)
         def forward(self, x) -> (loc, cls)
             x  : (B,3,300,300)
             loc: (B,8732,4)   —— 4 = [cy偏移, cx偏移, h对数, w对数]（相对锚点的编码量，方差在 loss/解码处处理）
-            cls: (B,8732,81)  —— 每类原始 logits（训练算损失用；eval 由外部 sigmoid）
+            cls: (B,8732,81)  —— 每类原始 logits（训练直接送交叉熵/BCE；
+                                推理端默认做 softmax（背景为第 0 类），若用 focal 训练则做 sigmoid）
 
   结构要点：
     - Extra block8~11：每块 = 1x1 降维(输出一半) + 3x3 提取；输出尺寸 10x10/5x5/3x3/1x1

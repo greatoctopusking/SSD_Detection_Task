@@ -1,13 +1,17 @@
 """COCO 数据集 —— 对应手册 create_ssd_dataset（MindDataset → PyTorch Dataset/DataLoader）。
 
-依赖：
-    - 官方 instances json（data/annotations/instances_val2017.json）
-    - 图片目录（data/images/，内含 file_name 对应的 .jpg）
-    - 训练时还需锚点数组（来自 ssd.model.anchor，由调用方传入，避免循环依赖）
+数据组织（全量 COCO2017，路径在 yaml 里配置）：
+    data/train2017/*.jpg   + data/annotations/instances_train2017.json   （训练）
+    data/val2017/*.jpg     + data/annotations/instances_val2017.json     （验证）
+    data/subsets/*_ids.json  可选：图片 id 清单；配置为 null/缺失时 = 使用该 json 中全部图片
 
 类别映射约定（train/eval/infer 全局一致）：
-    类别按 json 中 categories 的 id 升序排，label 索引 = 排序后位置 + 1（1..80，0=背景）。
-    meta['names']: 长度 81 的名称表（names[0]='__background__'）。
+    categories 按 id 升序，label 索引 = 排序后位置 + 1（1..80，0=背景）；meta['names'] 长度 81。
+
+性能要点（GPU 训练）：
+    - build_coco_index 只保留 file_name 与 GT 框（舍弃 segmentation 等大字段），
+      避免 DataLoader 多进程把上百 MB 的原始 json 结构反复 pickle；
+    - DataLoader 按设备自动启用 pin_memory / persistent_workers。
 """
 from __future__ import annotations
 
@@ -27,7 +31,7 @@ MATCHING_THRESHOLD = 0.5  # 锚点匹配 IoU 阈值（手册值）
 
 # ---------------------------------------------------------------- meta ----
 def load_coco_meta(anno_json: str) -> dict:
-    """解析标注 json，返回常用索引表。"""
+    """解析标注 json，返回常用索引表（评估 / 可视化 / 类别名使用）。"""
     with open(anno_json, "r", encoding="utf-8") as f:
         data = json.load(f)
 
@@ -41,12 +45,12 @@ def load_coco_meta(anno_json: str) -> dict:
         anns_by_image.setdefault(a["image_id"], []).append(a)
 
     return {
-        "cats": cats,                                        # 按 id 升序
-        "images": images,                                    # id -> info(file_name,w,h)
-        "anns_by_image": anns_by_image,                      # image_id -> [ann,...]
-        "label_of_cat": {c["id"]: i + 1 for i, c in enumerate(cats)},  # cat_id -> label(1..80)
+        "cats": cats,
+        "images": images,
+        "anns_by_image": anns_by_image,
+        "label_of_cat": {c["id"]: i + 1 for i, c in enumerate(cats)},
         "cat_id_to_name": {c["id"]: c["name"] for c in cats},
-        "names": ["__background__"] + [c["name"] for c in cats],       # 索引即 label
+        "names": ["__background__"] + [c["name"] for c in cats],
     }
 
 
@@ -59,6 +63,44 @@ def anns_to_boxes(anns: list, label_of_cat: dict) -> np.ndarray:
         x, y, w, h = a["bbox"]
         rows.append([y, x, y + h, x + w, float(label_of_cat[a["category_id"]])])
     return np.asarray(rows, dtype=np.float32)
+
+
+def build_coco_index(
+    anno_json: str,
+    image_ids=None,
+    require_objects: bool = False,
+    verbose: bool = True,
+) -> dict:
+    """构建轻量索引 {"ids", "file_names", "boxes"}，供 COCODataset 使用。
+
+    image_ids=None → 使用 json 中全部图片；require_objects=True → 只保留有标注的图片（训练集）。
+    """
+    if not os.path.isfile(anno_json):
+        raise FileNotFoundError(f"标注文件不存在: {anno_json}（全量数据请先下载并解压到 data/）")
+
+    meta = load_coco_meta(anno_json)
+    if image_ids is None:
+        ids = sorted(meta["images"].keys())
+    else:
+        missing = [i for i in image_ids if int(i) not in meta["images"]]
+        if missing:
+            raise ValueError(f"json 中找不到这些图片 id（前 5 个）：{missing[:5]}")
+        ids = [int(i) for i in image_ids]
+
+    if require_objects:
+        ids = [i for i in ids if meta["anns_by_image"].get(i)]
+
+    file_names, boxes, n_box = [], [], 0
+    for i in ids:
+        file_names.append(meta["images"][i]["file_name"])
+        b = anns_to_boxes(meta["anns_by_image"].get(i, []), meta["label_of_cat"])
+        boxes.append(b)
+        n_box += len(b)
+
+    if verbose:
+        print(f"[coco] 索引完成: {len(ids)} 张图 / {n_box} 个框 "
+              f"(来源 {os.path.basename(anno_json)})")
+    return {"ids": ids, "file_names": file_names, "boxes": boxes}
 
 
 def _read_rgb(path: str) -> np.ndarray:
@@ -75,9 +117,8 @@ class COCODataset(Dataset):
 
     def __init__(
         self,
-        anno_json: str,
+        index: dict,
         image_dir: str,
-        image_ids,
         is_training: bool = True,
         image_size: int = 300,
         default_boxes: np.ndarray | None = None,
@@ -86,7 +127,9 @@ class COCODataset(Dataset):
     ):
         if is_training and (default_boxes is None or default_boxes_tlbr is None):
             raise ValueError("训练数据集必须传入 default_boxes / default_boxes_tlbr")
-        self.meta = load_coco_meta(anno_json)
+        self.ids = index["ids"]
+        self.file_names = index["file_names"]
+        self.boxes = index["boxes"]
         self.image_dir = image_dir
         self.is_training = is_training
         self.image_size = image_size
@@ -94,20 +137,13 @@ class COCODataset(Dataset):
         self.default_boxes_tlbr = default_boxes_tlbr
         self.color_jitter = color_jitter
 
-        missing = [i for i in image_ids if i not in self.meta["images"]]
-        if missing:
-            raise ValueError(f"json 中找不到图片 id（前 5 个）：{missing[:5]}")
-        self.image_ids = list(image_ids)
-
     def __len__(self):
-        return len(self.image_ids)
+        return len(self.ids)
 
     def __getitem__(self, idx: int):
-        img_id = self.image_ids[idx]
-        file_name = self.meta["images"][img_id]["file_name"]
-        image = _read_rgb(os.path.join(self.image_dir, file_name))
-        anns = self.meta["anns_by_image"].get(img_id, [])
-        boxes = anns_to_boxes(anns, self.meta["label_of_cat"])
+        img_id = self.ids[idx]
+        image = _read_rgb(os.path.join(self.image_dir, self.file_names[idx]))
+        boxes = self.boxes[idx]
 
         if self.is_training:
             image, boxes_norm = T.preprocess_train(
@@ -145,39 +181,57 @@ def build_dataloader(
     split: str,
     default_boxes: np.ndarray | None = None,
     default_boxes_tlbr: np.ndarray | None = None,
+    index: dict | None = None,
+    verbose: bool = True,
 ):
-    """按 cfg 构建 train/val 的 DataLoader。cfg 需为 resolve_config_paths() 后的版本。
+    """按 cfg 构建 train/val 的 DataLoader（cfg 需为 resolve_config_paths() 后的版本）。
 
-    返回 (loader, dataset)；训练 split 自动过滤无标注图片（保证每个样本有 gt）。"""
+    返回 (loader, dataset)。训练 split 自动过滤无标注图片；DataLoader 在 CUDA 下启用
+    pin_memory / persistent_workers，num_workers 由 cfg['data']['num_workers'] 控制。"""
     assert split in ("train", "val"), split
-    data_cfg = cfg["data"]
-    ids = _read_ids(
-        data_cfg["subset"]["train_ids_json"] if split == "train" else data_cfg["subset"]["val_ids_json"]
-    )
+    dcfg = cfg["data"][split]
     is_training = split == "train"
 
-    meta = load_coco_meta(data_cfg["anno_json"])
-    if is_training:
-        ids = [i for i in ids if meta["anns_by_image"].get(i)]
+    if index is None:
+        ids_json = dcfg.get("ids_json")
+        ids, src = None, "json 全部图片"
+        if ids_json and os.path.isfile(ids_json):
+            ids = _read_ids(ids_json)
+            src = f"ids 清单 {os.path.basename(ids_json)}"
+        elif ids_json:
+            src = f"json 全部图片（ids 清单缺失，已回退: {ids_json}）"
+        index = build_coco_index(
+            dcfg["anno_json"], ids, require_objects=is_training, verbose=verbose
+        )
     else:
-        ids = [i for i in ids if i in meta["images"]]
+        src = "外部传入的 index"
 
     ds = COCODataset(
-        anno_json=data_cfg["anno_json"],
-        image_dir=data_cfg["image_dir"],
-        image_ids=ids,
+        index=index,
+        image_dir=dcfg["image_dir"],
         is_training=is_training,
         image_size=cfg["model"]["input_size"][0],
         default_boxes=default_boxes,
         default_boxes_tlbr=default_boxes_tlbr,
+        color_jitter=bool(cfg["data"].get("color_jitter", True)),
     )
-    train_cfg = cfg["train"]
-    batch_size = train_cfg["batch_size"] if is_training else cfg["eval"]["batch_size"]
-    loader = DataLoader(
-        ds,
+
+    batch_size = int(cfg["train"]["batch_size"]) if is_training else int(cfg["eval"].get("batch_size", 1))
+    num_workers = int(cfg["data"].get("num_workers", 0))
+    pin_memory = bool(cfg["data"].get("pin_memory", True)) and torch.cuda.is_available()
+
+    kwargs = dict(
         batch_size=batch_size,
         shuffle=is_training,
         drop_last=is_training,
-        num_workers=int(cfg["data"].get("num_workers", 0)),
+        num_workers=num_workers,
+        pin_memory=pin_memory,
     )
+    if num_workers > 0:
+        kwargs.update(persistent_workers=True, prefetch_factor=int(cfg["data"].get("prefetch_factor", 4)))
+    loader = DataLoader(ds, **kwargs)
+
+    if verbose:
+        print(f"[coco] {split}: {len(ds)} 张 / batch {batch_size} / {len(loader)} steps / "
+              f"workers {num_workers} / pin_memory {pin_memory} / 来源 {src}")
     return loader, ds
