@@ -42,11 +42,11 @@ loss:
 # ---------- 训练（CPU 小规模，数值待 benchmark 后定） ----------
 train:
   batch_size: 4                # TODO: benchmark_cpu.py 实测后调整
-  epochs: 5                    # TODO: 原手册 60；CPU 先小规模跑通
+  epochs: 6                    # TODO: 原手册 60；CPU 先小规模跑通
   train_subset_size: 500       # 与 scripts/make_subset.py 默认一致（切分时生成）
   val_subset_size: 300         # 同上
-  lr_init: 0.001
-  lr_max: 0.05
+  lr_init: 0.0005
+  lr_max: 0.01
   lr_end_ratio: 0.05           # lr_end = lr_init * lr_end_ratio（手册语义）
   warmup_epochs: 1
   momentum: 0.9
@@ -57,7 +57,7 @@ train:
 eval:
   batch_size: 1
   nms_threshold: 0.6
-  min_score: 0.1
+  min_score: 0.55
   max_boxes: 100
   ckpt_path: ./checkpoints/ssd-last.pth
 

@@ -44,7 +44,7 @@ class SSDLoss(nn.Module):
         p_t = targets * sigmoid + (1 - targets) * (1 - sigmoid)   # (B,8732,81)
         modulating = torch.pow(1.0 - p_t, self.gamma)
         alpha_w = targets * self.alpha + (1 - targets) * (1 - self.alpha)
-        loss_cls = (modulating * alpha_w * bce).sum(dim=(1, 2))    # (B,)
+        loss_cls = (modulating * alpha_w * bce).sum(dim=1).mean(dim=1)    # (B,)
 
         # ---------- 归一化与聚合 ----------
         n = num_match.float().squeeze(-1).clamp(min=1.0)          # (B,) 防除零

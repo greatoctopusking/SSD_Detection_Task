@@ -111,7 +111,12 @@ def main():
             opt.zero_grad()
             pred_loc, pred_cls = net(img)
             loss = criterion(pred_loc, pred_cls, gt_loc, gt_label, num_match)
+            if not torch.isfinite(loss):
+                log_line(f"警告: step {ep_steps} 出现非有限 loss({loss.item()})，跳过该步")
+                opt.zero_grad()
+                continue
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(net.parameters(), max_norm=10.0)   # 梯度裁剪
             opt.step()
 
             if global_step < len(lr_arr):
