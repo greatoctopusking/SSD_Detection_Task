@@ -66,9 +66,10 @@ train:
   amp: true                    # CUDA 下启用混合精度（提速/省显存）
   deterministic: false         # true 可复现但更慢
   log_every_n_steps: 20
-  save_every_n_epochs: 1       # current_checkpoint 保存频率
+  save_every_n_epochs: 1       # current_checkpoint 保存频率（0 = 不保存）
+  keep_every_n_epochs: 10      # 中间快照：另存 epochNNN_checkpoint.pth（0 = 关闭；约 131MB/份）
   eval_every_n_epochs: 5       # 训练中途验证 mAP 的频率（0 = 不评估）
-  best_metric: map             # map（需 eval_every>0 且评估过）| loss
+  best_metric: map             # map（只在评估轮次比较，推荐）| loss
 
 # ---------- 评估 / 推理 ----------
 eval:

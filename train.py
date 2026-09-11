@@ -116,6 +116,7 @@ def main():
     grad_clip = float(t.get("grad_clip", 10.0))
     log_every = int(t.get("log_every_n_steps", 20))
     save_every = int(t.get("save_every_n_epochs", 1))
+    keep_every = int(t.get("keep_every_n_epochs", 0))   # 中间快照：每 N epoch 另存一份（0=关闭）
     eval_every = int(t.get("eval_every_n_epochs", 0))
     best_metric = str(t.get("best_metric", "map")).lower()
 
@@ -178,7 +179,9 @@ def main():
     scaler = torch.amp.GradScaler("cuda", enabled=amp_enabled)
 
     history = empty_history()
-    start_epoch, global_step, best_value = 1, 0, None
+    start_epoch, global_step = 1, 0
+    # best_map / best_loss 必须分开跟踪：mAP 与 loss 尺度完全不同，混用会让 best 选错
+    best_map, best_loss, best_value = None, None, None
 
     # ---------- 断点续训 ----------
     if resume_ckpt:
@@ -191,9 +194,11 @@ def main():
         start_epoch = int(ck.get("epoch", 0)) + 1
         global_step = int(ck.get("global_step", 0))
         best_value = ck.get("best_value")
+        best_map = ck.get("best_map")
+        best_loss = ck.get("best_loss")
         history = ck.get("history") or empty_history()
         log.log(f"续训：从 {resume_ckpt} 恢复 → 已完成 {start_epoch - 1} epoch / "
-                f"global_step={global_step} / best={best_value}")
+                f"global_step={global_step} / best_map={best_map} / best_loss={best_loss}")
 
     # ---------- 启动信息 ----------
     log.section("SSD300 训练开始")
@@ -206,6 +211,7 @@ def main():
             f"wd={t['weight_decay']} seed={seed}")
     log.log(f"损失        : {type(criterion).__name__}   AMP: {amp_enabled}   grad_clip: {grad_clip}")
     log.log(f"评估        : eval_every_n_epochs={eval_every} best_metric={best_metric}")
+    log.log(f"保存        : current 每 {save_every} epoch / 中间快照每 {keep_every} epoch（0=关闭）")
     with open(os.path.join(run_dir, "config.yaml"), "w", encoding="utf-8") as f:
         yaml.safe_dump(cfg, f, allow_unicode=True, sort_keys=False)
 
@@ -285,25 +291,38 @@ def main():
             log.log(f"epoch {epoch}: val mAP = {map_value:.4f}（耗时 {time.time() - ev_t0:.0f}s）")
         history["map"].append(map_value)
 
-        # ---------- 最优判定 ----------
-        is_best = False
-        if best_metric == "map" and map_value is not None:
-            is_best = best_value is None or map_value > float(best_value)
-            candidate = map_value
-        else:                                   # loss 模式（或 map 模式但本轮无评估）
-            is_best = best_value is None or avg_loss < float(best_value)
-            candidate = avg_loss
+        # ---------- 最优判定（best_map / best_loss 分开跟踪，禁止跨尺度比较） ----------
+        if map_value is not None and (best_map is None or map_value > best_map):
+            best_map = map_value
+        if best_loss is None or avg_loss < best_loss:
+            best_loss = avg_loss
+
+        if best_metric == "map":
+            # 只有"评估轮次"才参与 best 竞争；未评估的轮次不用 loss 混进来
+            is_best = map_value is not None and map_value >= best_map
+            candidate = best_map
+        else:
+            is_best = avg_loss <= best_loss
+            candidate = best_loss
         if is_best:
             best_value = candidate
 
         # ---------- 保存 ----------
         if is_best:
             save_checkpoint(best_ckpt_path, net, epoch=epoch, global_step=global_step,
-                            best_value=best_value, history=history, config=cfg)
+                            best_value=best_value, best_map=best_map, best_loss=best_loss,
+                            history=history, config=cfg)
             log.log(f"epoch {epoch}: 已更新 best_checkpoint（{best_metric}={best_value:.4f}）")
-        if epoch % save_every == 0 or epoch == int(t["epochs"]):
+        if save_every > 0 and (epoch % save_every == 0 or epoch == int(t["epochs"])):
             save_checkpoint(cur_ckpt_path, net, optimizer=opt, scaler=scaler, epoch=epoch,
-                            global_step=global_step, best_value=best_value, history=history, config=cfg)
+                            global_step=global_step, best_value=best_value, best_map=best_map,
+                            best_loss=best_loss, history=history, config=cfg)
+        if keep_every > 0 and epoch % keep_every == 0:
+            snapshot = os.path.join(run_dir, f"epoch{epoch:03d}_checkpoint.pth")
+            save_checkpoint(snapshot, net, epoch=epoch, global_step=global_step,
+                            best_value=best_value, best_map=best_map, best_loss=best_loss,
+                            history=history, config=cfg)
+            log.log(f"epoch {epoch}: 已保存中间快照 {os.path.basename(snapshot)}")
 
         with open(history_path, "w", encoding="utf-8") as f:
             json.dump(history, f, ensure_ascii=False)
@@ -312,11 +331,20 @@ def main():
 
         log.log(f"epoch {epoch}/{t['epochs']} 完成 | avg loss {avg_loss:.4f} | "
                 f"{ep_time:.0f}s ({ep_time / max(ep_steps, 1):.2f} s/step) | "
-                f"best {best_metric}={best_value:.4f}"
+                f"best_map={'-' if best_map is None else round(best_map, 4)} | "
+                f"best_loss={best_loss:.4f}"
                 + (f" | val mAP {map_value:.4f}" if map_value is not None else ""))
+
+    # 兜底：best_metric=map 但整轮都没评估（或从未改进）时，至少留一个 best 文件
+    if not os.path.isfile(best_ckpt_path) and os.path.isfile(cur_ckpt_path):
+        save_checkpoint(best_ckpt_path, net, epoch=int(t["epochs"]), global_step=global_step,
+                        best_value=best_value, best_map=best_map, best_loss=best_loss,
+                        history=history, config=cfg)
+        log.log("[警告] 本次训练未产生 best（可能未开启评估），已用最终权重补写 best_checkpoint")
 
     total = time.time() - train_start
     log.log(f"训练结束：总耗时 {total / 60:.1f} 分钟，跳过非有限步 {skipped} 次")
+    log.log(f"best_map={best_map} | best_loss={best_loss}")
     log.log(f"best_checkpoint: {best_ckpt_path}")
     log.log(f"current_checkpoint: {cur_ckpt_path}")
     log.log(f"曲线: {curves_path} | 日志: {log.log_path}")

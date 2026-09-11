@@ -31,14 +31,21 @@ def save_checkpoint(
     epoch: int = 0,
     global_step: int = 0,
     best_value=None,
+    best_map=None,
+    best_loss=None,
     history: dict | None = None,
     config: dict | None = None,
 ) -> str:
-    """保存完整训练状态（原子写：先写 .tmp 再替换，避免中断损坏 ckpt）。"""
+    """保存完整训练状态（原子写：先写 .tmp 再替换，避免中断损坏 ckpt）。
+
+    best_value 为当前 best_metric 对应的值；best_map / best_loss 分别记录两条最优曲线，
+    两者尺度不同（mAP 与 loss），必须分开保存，避免比较时混用。"""
     payload = {
         "epoch": int(epoch),
         "global_step": int(global_step),
         "best_value": best_value,
+        "best_map": best_map,
+        "best_loss": best_loss,
         "model": strip_module_prefix(net.state_dict()),
         "optimizer": optimizer.state_dict() if optimizer is not None else None,
         "scaler": scaler.state_dict() if scaler is not None else None,
@@ -62,7 +69,7 @@ def load_checkpoint(path: str, map_location="cpu") -> dict:
         return ck
     # 裸 state_dict（旧格式）
     return {
-        "epoch": 0, "global_step": 0, "best_value": None,
+        "epoch": 0, "global_step": 0, "best_value": None, "best_map": None, "best_loss": None,
         "model": strip_module_prefix(ck if isinstance(ck, dict) else {}),
         "optimizer": None, "scaler": None, "history": {}, "config": {},
     }

@@ -100,14 +100,18 @@ python infer.py --ckpt checkpoints/20260101_120000/best_checkpoint.pth --image d
 
 **训练产物**（`checkpoints/<日期>_<时间>/`）：
 ```
-├── best_checkpoint.pth     # best_metric 最优（默认 val mAP）
+├── best_checkpoint.pth     # best_metric 最优：best_metric=map 时只在评估轮次按 mAP 更新
 ├── current_checkpoint.pth  # 最新（含 optimizer/AMP/epoch/历史，用于 --resume）
+├── epochNNN_checkpoint.pth # 中间快照（keep_every_n_epochs，默认每 10 epoch，约 131MB/份）
 ├── curves.png              # loss / lr / mAP 曲线（每 epoch 刷新）
 ├── history.json            # 曲线数据
-├── train_log.txt           # 完整日志
+├── train_log.txt           # 完整日志（含 best_map / best_loss 两条独立记录）
 ├── config.yaml             # 本次训练配置快照
 └── predictions_epochN.json # 训练中途评估的预测结果
 ```
+
+> 说明：`best_map`（验证 mAP）与 `best_loss`（训练平均 loss）**分开跟踪、互不比较**，
+> 避免两种尺度混用导致 best_checkpoint 选错轮次；`best_metric` 决定用哪一个来选 best。
 
 **运行约定**：库文件不要用 `python 路径/文件.py` 直接跑（会因 `sys.path` 与文件名遮蔽报 `ModuleNotFoundError`），
 一律从仓库根目录调用，或 `python -m ssd.model.SSD300` 这样的模块方式。
