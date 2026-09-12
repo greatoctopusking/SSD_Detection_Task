@@ -77,7 +77,7 @@ eval:
   min_score: 0.1               # softmax 概率阈值（focal 训练可调 0.2~0.45）
   nms_threshold: 0.6
   max_boxes: 100
-  ckpt_path: ./checkpoints/current_checkpoint.pth   # 也可写 checkpoints/<时间戳>/best_checkpoint.pth
+  ckpt_path: ./checkpoints/20260910_172825/best_checkpoint.pth   # 也可写 checkpoints/<时间戳>/best_checkpoint.pth
 
 # ---------- 输出路径 ----------
 paths:
